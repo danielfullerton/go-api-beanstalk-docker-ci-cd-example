@@ -1,0 +1,55 @@
+name: Deploy Application
+
+on:
+  push:
+    branches:
+      - development
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v2
+
+      # set up Go capabilities
+      - uses: actions/setup-go@v2
+        with:
+          go-version: '^1.15.2'
+
+      # clean up, install and build
+      - run: go mod tidy
+      - run: go mod vendor
+      - run: go install cmd/main.go
+      - run: go build cmd/main.go
+
+      # package Go application
+      - name: Create zip
+        run: zip -r deploy.zip . -x ./vendor/\*
+
+      # create a random version id for this build
+      - name: Set UUID
+        id: generate-uuid
+        uses: filipstefansson/uuid-action@v1
+        with:
+          name: ${{ github.sha }}
+
+      # if we are on "development" branch, we will deploy to our development environment. You can add as many of these "if" blocks as needed for different branches.
+      - if: env.GITHUB_REF_SLUG == 'development'
+        name: Deploy to development
+        uses: einaregilsson/beanstalk-deploy@v14
+        with:
+          # you should have these 2 secrets defined in your Github repo, and they should point to an AWS IAM account with permissions to deploy to Beanstalk
+          aws_access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws_secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          # todo: replace
+          application_name: "[ENTER YOUR APPLICATION NAME HERE]"
+          # todo: replace
+          environment_name: "[ENTER YOUR ENVIRONMENT NAME HERE]"
+          version_label: ${{ steps.generate-uuid.outputs.uuid }}
+          # todo: replace
+          region: "[ENTER YOUR REGION HERE]"
+          deployment_package: deploy.zip
